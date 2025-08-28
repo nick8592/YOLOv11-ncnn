@@ -1,0 +1,39 @@
+# Ignore Python cache and environment files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv
+venv/
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore OS generated files
+.DS_Store
+Thumbs.db
+
+# Ignore logs
+*.log
+
+# Ignore weights folder
+weights/
+
+# Ignore VS Code settings
+.vscode/
+
+# Ignore build artifacts
+build/
+dist/
+*.egg-info/
+
+# Ignore compiled libraries
+*.so
+*.dll
+*.dylib
+
+# Ignore temporary files
+*.tmp
+*.swp
+*.bak
