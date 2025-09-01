@@ -52,9 +52,13 @@ For dynamic shape support:
 ```bash
 cd weights
 python3 -c 'import yolo11n_pnnx; yolo11n_pnnx.export_torchscript()'
+python3 -c 'import yolo11n_seg_pnnx; yolo11n_seg_pnnx.export_torchscript()'
 pnnx yolo11n_pnnx.py.pt inputshape=[1,3,640,640] inputshape2=[1,3,320,320]
+pnnx yolo11n_seg_pnnx.py.pt inputshape=[1,3,640,640] inputshape2=[1,3,320,320]
 mv yolo11n_pnnx.py.ncnn.param yolo11n.ncnn.param
 mv yolo11n_pnnx.py.ncnn.bin yolo11n.ncnn.bin
+mv yolo11n_seg_pnnx.py.ncnn.param yolo11n_seg.ncnn.param
+mv yolo11n_seg_pnnx.py.ncnn.bin yolo11n_seg.ncnn.bin
 ```
 
 ## Download Example Code
@@ -98,12 +102,46 @@ make -j$(nproc)
 Assuming your executables are in the `bin` folder and your sample image is `images/sample.jpg`:
 
 ```bash
-cd ../bin
-./yolo11 ../images/sample.jpg
-./yolo11_seg ../images/sample.jpg
+./bin/yolo11 ./images/sample.jpg
+./bin/yolo11_seg ./images/sample.jpg
 ```
 
 Replace `sample.jpg` with your own image filename if needed.
+
+## Directory Tree
+```
+YOLOv11-ncnn
+|-- CMakeLists.txt
+|-- LICENSE
+|-- README.md
+|-- bin
+|   |-- yolo11
+|   `-- yolo11_seg
+|-- build
+|   |-- CMakeFiles
+|   |-- Makefile
+|   `-- ..
+|-- images
+|   |-- image_det_output.jpg
+|   |-- image_seg_output.jpg
+|   `-- sample.jpg
+|-- ncnn
+|   |-- CITATION.cff
+|   |-- CMakeLists.txt
+|   `-- ..
+|-- requirements.txt
+|-- src
+|   |-- yolo11.cpp
+|   `-- yolo11_seg.cpp
+`-- weights
+    |-- yolo11n.ncnn.bin
+    |-- yolo11n.ncnn.param
+    |-- yolo11n_pnnx.py
+    |-- yolo11n_seg.ncnn.bin
+    |-- yolo11n_seg.ncnn.param
+    |-- yolo11n_seg_pnnx.py
+    `-- ..
+```
 
 ## Troubleshooting & Tips
 
