@@ -3,38 +3,26 @@
 
 // 1. install
 //      pip3 install -U ultralytics pnnx ncnn
-// 2. export yolo11-seg torchscript
-//      yolo export model=yolo11n-seg.pt format=torchscript
+// 2. export yolo11 torchscript
+//      yolo export model=yolo11n.pt format=torchscript
 // 3. convert torchscript with static shape
-//      pnnx yolo11n-seg.torchscript
-// 4. modify yolo11n_seg_pnnx.py for dynamic shape inference
+//      pnnx yolo11n.torchscript
+// 4. modify yolo11n_pnnx.py for dynamic shape inference
 //      A. modify reshape to support dynamic image sizes
 //      B. permute tensor before concat and adjust concat axis
 //      C. drop post-process part
 //      before:
-//          v_202 = v_201.view(1, 32, 6400)
-//          v_208 = v_207.view(1, 32, 1600)
-//          v_214 = v_213.view(1, 32, 400)
-//          v_215 = torch.cat((v_202, v_208, v_214), dim=2)
+//          v_235 = v_204.view(1, 144, 6400)
+//          v_236 = v_219.view(1, 144, 1600)
+//          v_237 = v_234.view(1, 144, 400)
+//          v_238 = torch.cat((v_235, v_236, v_237), dim=2)
 //          ...
-//          v_261 = v_230.view(1, 144, 6400)
-//          v_262 = v_245.view(1, 144, 1600)
-//          v_263 = v_260.view(1, 144, 400)
-//          v_264 = torch.cat((v_261, v_262, v_263), dim=2)
-//          ...
-//          v_285 = (v_284, v_196, )
-//          return v_285
 //      after:
-//          v_202 = v_201.view(1, 32, -1).transpose(1, 2)
-//          v_208 = v_207.view(1, 32, -1).transpose(1, 2)
-//          v_214 = v_213.view(1, 32, -1).transpose(1, 2)
-//          v_215 = torch.cat((v_202, v_208, v_214), dim=1)
-//          ...
-//          v_261 = v_230.view(1, 144, -1).transpose(1, 2)
-//          v_262 = v_245.view(1, 144, -1).transpose(1, 2)
-//          v_263 = v_260.view(1, 144, -1).transpose(1, 2)
-//          v_264 = torch.cat((v_261, v_262, v_263), dim=1)
-//          return v_264, v_215, v_196
+//          v_235 = v_204.view(1, 144, -1).transpose(1, 2)
+//          v_236 = v_219.view(1, 144, -1).transpose(1, 2)
+//          v_237 = v_234.view(1, 144, -1).transpose(1, 2)
+//          v_238 = torch.cat((v_235, v_236, v_237), dim=1)
+//          return v_238
 //      D. modify area attention for dynamic shape inference
 //      before:
 //          v_95 = self.model_10_m_0_attn_qkv_conv(v_94)
@@ -66,15 +54,15 @@
 //          v_108 = self.model_10_m_0_attn_pe_conv(v_107)
 //          v_109 = (v_106 + v_108)
 //          v_110 = self.model_10_m_0_attn_proj_conv(v_109)
-// 5. re-export yolo11-seg torchscript
-//      python3 -c 'import yolo11n_seg_pnnx; yolo11n_seg_pnnx.export_torchscript()'
+// 5. re-export yolo11 torchscript
+//      python3 -c 'import yolo11n_pnnx; yolo11n_pnnx.export_torchscript()'
 // 6. convert new torchscript with dynamic shape
-//      pnnx yolo11n_seg_pnnx.py.pt inputshape=[1,3,640,640] inputshape2=[1,3,320,320]
+//      pnnx yolo11n_pnnx.py.pt inputshape=[1,3,640,640] inputshape2=[1,3,320,320]
 // 7. now you get ncnn model files
-//      mv yolo11n_seg_pnnx.py.ncnn.param yolo11n_seg.ncnn.param
-//      mv yolo11n_seg_pnnx.py.ncnn.bin yolo11n_seg.ncnn.bin
+//      mv yolo11n_pnnx.py.ncnn.param yolo11n.ncnn.param
+//      mv yolo11n_pnnx.py.ncnn.bin yolo11n.ncnn.bin
 
-// the out blob would be a 2-dim tensor with w=176 h=8400
+// the out blob would be a 2-dim tensor with w=144 h=8400
 //
 //        | bbox-reg 16 x 4       | per-class scores(80) |
 //        +-----+-----+-----+-----+----------------------+
@@ -84,17 +72,6 @@
 //  (8400)|     |     |     |     |           .          |
 //       \|     |     |     |     |           .          |
 //        +-----+-----+-----+-----+----------------------+
-//
-
-//
-//        | mask (32) |
-//        +-----------+
-//        |0.1........|
-//   all /|           |
-//  boxes |0.0........|
-//  (8400)|     .     |
-//       \|     .     |
-//        +-----------+
 //
 
 #include "layer.h"
@@ -116,8 +93,6 @@ struct Object
     cv::Rect_<float> rect;
     int label;
     float prob;
-    int gindex;
-    cv::Mat mask;
 };
 
 static inline float intersection_area(const Object& a, const Object& b)
@@ -251,7 +226,7 @@ static void generate_proposals(const ncnn::Mat& pred, int stride, const ncnn::Ma
 
             if (score >= prob_threshold)
             {
-                ncnn::Mat pred_bbox = pred_grid.range(0, reg_max_1 * 4).reshape(reg_max_1, 4).clone();
+                ncnn::Mat pred_bbox = pred_grid.range(0, reg_max_1 * 4).reshape(reg_max_1, 4);
 
                 {
                     ncnn::Layer* softmax = ncnn::create_layer("Softmax");
@@ -302,7 +277,6 @@ static void generate_proposals(const ncnn::Mat& pred, int stride, const ncnn::Ma
                 obj.rect.height = y1 - y0;
                 obj.label = label;
                 obj.prob = score;
-                obj.gindex = y * num_grid_x + x;
 
                 objects.push_back(obj);
             }
@@ -324,21 +298,12 @@ static void generate_proposals(const ncnn::Mat& pred, const std::vector<int>& st
         const int num_grid_y = h / stride;
         const int num_grid = num_grid_x * num_grid_y;
 
-        std::vector<Object> objects_stride;
-        generate_proposals(pred.row_range(pred_row_offset, num_grid), stride, in_pad, prob_threshold, objects_stride);
-
-        for (size_t j = 0; j < objects_stride.size(); j++)
-        {
-            Object obj = objects_stride[j];
-            obj.gindex += pred_row_offset;
-            objects.push_back(obj);
-        }
-
+        generate_proposals(pred.row_range(pred_row_offset, num_grid), stride, in_pad, prob_threshold, objects);
         pred_row_offset += num_grid;
     }
 }
 
-static int detect_yolo11_seg(const cv::Mat& bgr, std::vector<Object>& objects)
+static int detect_yolo11(const cv::Mat& bgr, std::vector<Object>& objects)
 {
     ncnn::Net yolo11;
 
@@ -346,17 +311,16 @@ static int detect_yolo11_seg(const cv::Mat& bgr, std::vector<Object>& objects)
     // yolo11.opt.use_bf16_storage = true;
 
     // https://github.com/nihui/ncnn-android-yolo11/tree/master/app/src/main/assets
-    yolo11.load_param("yolo11n_seg.ncnn.param");
-    yolo11.load_model("yolo11n_seg.ncnn.bin");
-    // yolo11.load_param("yolo11s_seg.ncnn.param");
-    // yolo11.load_model("yolo11s_seg.ncnn.bin");
-    // yolo11.load_param("yolo11m_seg.ncnn.param");
-    // yolo11.load_model("yolo11m_seg.ncnn.bin");
+    yolo11.load_param("weights/yolo11n.ncnn.param");
+    yolo11.load_model("weights/yolo11n.ncnn.bin");
+    // yolo11.load_param("yolo11s.ncnn.param");
+    // yolo11.load_model("yolo11s.ncnn.bin");
+    // yolo11.load_param("yolo11m.ncnn.param");
+    // yolo11.load_model("yolo11m.ncnn.bin");
 
     const int target_size = 640;
     const float prob_threshold = 0.25f;
     const float nms_threshold = 0.45f;
-    const float mask_threshold = 0.5f;
 
     int img_w = bgr.cols;
     int img_h = bgr.rows;
@@ -414,16 +378,6 @@ static int detect_yolo11_seg(const cv::Mat& bgr, std::vector<Object>& objects)
     nms_sorted_bboxes(proposals, picked, nms_threshold);
 
     int count = picked.size();
-    if (count == 0)
-        return 0;
-
-    ncnn::Mat mask_feat;
-    ex.extract("out1", mask_feat);
-
-    ncnn::Mat mask_protos;
-    ex.extract("out2", mask_protos);
-
-    ncnn::Mat objects_mask_feat(mask_feat.w, 1, count);
 
     objects.resize(count);
     for (int i = 0; i < count; i++)
@@ -446,84 +400,6 @@ static int detect_yolo11_seg(const cv::Mat& bgr, std::vector<Object>& objects)
         objects[i].rect.y = y0;
         objects[i].rect.width = x1 - x0;
         objects[i].rect.height = y1 - y0;
-
-        // pick mask feat
-        memcpy(objects_mask_feat.channel(i), mask_feat.row(objects[i].gindex), mask_feat.w * sizeof(float));
-    }
-
-    // process mask
-    ncnn::Mat objects_mask;
-    {
-        ncnn::Layer* gemm = ncnn::create_layer("Gemm");
-
-        ncnn::ParamDict pd;
-        pd.set(6, 1);                             // constantC
-        pd.set(7, count);                         // constantM
-        pd.set(8, mask_protos.w * mask_protos.h); // constantN
-        pd.set(9, mask_feat.w);                   // constantK
-        pd.set(10, -1);                           // constant_broadcast_type_C
-        pd.set(11, 1);                            // output_N1M
-        gemm->load_param(pd);
-
-        ncnn::Option opt;
-        opt.num_threads = 1;
-        opt.use_packing_layout = false;
-
-        gemm->create_pipeline(opt);
-
-        std::vector<ncnn::Mat> gemm_inputs(2);
-        gemm_inputs[0] = objects_mask_feat;
-        gemm_inputs[1] = mask_protos.reshape(mask_protos.w * mask_protos.h, 1, mask_protos.c);
-        std::vector<ncnn::Mat> gemm_outputs(1);
-        gemm->forward(gemm_inputs, gemm_outputs, opt);
-        objects_mask = gemm_outputs[0].reshape(mask_protos.w, mask_protos.h, count);
-
-        gemm->destroy_pipeline(opt);
-
-        delete gemm;
-    }
-    {
-        ncnn::Layer* sigmoid = ncnn::create_layer("Sigmoid");
-
-        ncnn::Option opt;
-        opt.num_threads = 1;
-        opt.use_packing_layout = false;
-
-        sigmoid->create_pipeline(opt);
-
-        sigmoid->forward_inplace(objects_mask, opt);
-
-        sigmoid->destroy_pipeline(opt);
-
-        delete sigmoid;
-    }
-
-    // resize mask map
-    {
-        ncnn::Mat objects_mask_resized;
-        ncnn::resize_bilinear(objects_mask, objects_mask_resized, in_pad.w / scale, in_pad.h / scale);
-        objects_mask = objects_mask_resized;
-    }
-
-    // create per-object mask
-    for (int i = 0; i < count; i++)
-    {
-        Object& obj = objects[i];
-
-        const ncnn::Mat mm = objects_mask.channel(i);
-
-        obj.mask = cv::Mat((int)obj.rect.height, (int)obj.rect.width, CV_8UC1);
-
-        // adjust offset to original unpadded and clip inside object box
-        for (int y = 0; y < (int)obj.rect.height; y++)
-        {
-            const float* pmm = mm.row((int)(hpad / 2 / scale + obj.rect.y + y)) + (int)(wpad / 2 / scale + obj.rect.x);
-            uchar* pmask = obj.mask.ptr<uchar>(y);
-            for (int x = 0; x < (int)obj.rect.width; x++)
-            {
-                pmask[x] = pmm[x] > mask_threshold ? 1 : 0;
-            }
-        }
     }
 
     return 0;
@@ -576,22 +452,6 @@ static void draw_objects(const cv::Mat& bgr, const std::vector<Object>& objects)
         fprintf(stderr, "%d = %.5f at %.2f %.2f %.2f x %.2f\n", obj.label, obj.prob,
                 obj.rect.x, obj.rect.y, obj.rect.width, obj.rect.height);
 
-        for (int y = 0; y < (int)obj.rect.height; y++)
-        {
-            const uchar* maskptr = obj.mask.ptr<const uchar>(y);
-            uchar* bgrptr = image.ptr<uchar>((int)obj.rect.y + y) + (int)obj.rect.x * 3;
-            for (int x = 0; x < (int)obj.rect.width; x++)
-            {
-                if (maskptr[x])
-                {
-                    bgrptr[0] = bgrptr[0] * 0.5 + color[0] * 0.5;
-                    bgrptr[1] = bgrptr[1] * 0.5 + color[1] * 0.5;
-                    bgrptr[2] = bgrptr[2] * 0.5 + color[2] * 0.5;
-                }
-                bgrptr += 3;
-            }
-        }
-
         cv::rectangle(image, obj.rect, color);
 
         char text[256];
@@ -613,9 +473,7 @@ static void draw_objects(const cv::Mat& bgr, const std::vector<Object>& objects)
         cv::putText(image, text, cv::Point(x, y + label_size.height),
                     cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0));
     }
-
-    cv::imshow("image", image);
-    cv::waitKey(0);
+    cv::imwrite("images/image_det_output.jpg", image);
 }
 
 int main(int argc, char** argv)
@@ -636,7 +494,7 @@ int main(int argc, char** argv)
     }
 
     std::vector<Object> objects;
-    detect_yolo11_seg(m, objects);
+    detect_yolo11(m, objects);
 
     draw_objects(m, objects);
 
