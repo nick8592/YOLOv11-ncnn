@@ -17,8 +17,11 @@ Thumbs.db
 # Ignore logs
 *.log
 
-# Ignore weights folder
-weights/
+# Ignore folder
+weights/*
+ncnn/
+bin/
+images/*
 
 # Ignore VS Code settings
 .vscode/
@@ -37,3 +40,9 @@ dist/
 *.tmp
 *.swp
 *.bak
+
+# Optionally, do not ignore the folder/file 
+!images/
+!weights/yolo11n_pnnx.py
+!weights/yolo11n_seg_pnnx.py
+
