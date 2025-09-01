@@ -122,6 +122,14 @@ Replace `sample.jpg` with your own image filename if needed.
 
 ---
 
+## Image Results
+
+| Input Image         | Detection Output         | Segmentation Output         |
+|--------------------|-------------------------|----------------------------|
+| ![sample.jpg](images/sample.jpg) | ![image_det_output.jpg](images/image_det_output.jpg) | ![image_seg_output.jpg](images/image_seg_output.jpg) |
+
+---
+
 ## Directory Tree
 ```
 YOLOv11-ncnn
